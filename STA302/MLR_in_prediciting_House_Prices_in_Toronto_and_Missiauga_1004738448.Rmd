@@ -1,0 +1,169 @@
+---
+title: "MLR in prediciting House Prices in Toronto and Missiauga"
+author: "TONGFEI ZHOU, Id 1004738448"
+date: "December 1, 2020"
+output:
+  pdf_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## I. Data Wrangling
+
+First we sample 150 points randomly from our dataset, with seed 1004738448 as my student number, and then I show the IDs of the sample selected.
+
+```{r, echo=FALSE,message=FALSE, warning=FALSE}
+library(tidyverse)
+library(skimr)
+library(knitr)
+```
+
+(a)
+
+```{r, message=FALSE, warning=FALSE}
+set.seed(1004738448)
+data_orig_TZ <- read.csv("real203.csv")
+data_raw_8448 <- sample(sample_n(data_orig_TZ, 150, replace=FALSE))
+data_raw_8448$ID
+sort(data_raw_8448$ID, decreasing = TRUE)
+```
+
+So the IDs are reported above.
+
+(b) Now we create new variable lotsize = lotwidth * lotlength and replace lotwidth and lotlength.
+
+```{r, message=FALSE, warning=FALSE}
+dat_8448 <- data_raw_8448 %>% mutate(lotsize = lotlength * lotwidth) %>%
+  select(-c(lotlength, lotwidth))
+```
+
+(c) Next we clean our data. As one can see from the summary list, there are 92 missing values from variable maxsqfoot, and so this is very bad and I remove this predictor away. What left over are total 8 missing values among taxes, parking ad lotsize, so I remove these data points to help the analysis below easier.
+
+```{r, message=FALSE, warning=FALSE}
+summary(dat_8448)
+dat_8448 <- dat_8448 %>% select(-maxsqfoot)
+summary(dat_8448)
+data_TZ <- na.omit(dat_8448)
+summary(data_TZ)
+```
+
+Further, we check the potential serious outliers by boxplots, and one can see that there is one point in taxes variable and there are two points in lotsize variable that have quite extreme value, and so I identify them and found that they are just great mansions with 10+ parking pots and 5+ bedrooms and bathrooms, and so I will remove them since they are too glorious for normal houses. Therefore, we have 139 obs and 9 variables(included IDs) after all data cleaning.
+
+```{r, message=FALSE, warning=FALSE}
+par(mfrow = c(3,3))
+boxplot(data_TZ$taxes, main="8448")
+boxplot(data_TZ$bedroom, main="8448")
+boxplot(data_TZ$bathroom, main="8448")
+boxplot(data_TZ$list, main="8448")
+boxplot(data_TZ$parking, main="8448")
+boxplot(data_TZ$lotsize, main="8448")
+max_taxes <- max(data_TZ$taxes)
+second_max_lotsize <- sort(data_TZ$lotsize, decreasing = T)[2]
+data_TZ <- filter(data_TZ, data_TZ$taxes < max_taxes)
+data_TZ <- filter(data_TZ, data_TZ$lotsize < second_max_lotsize)
+```
+
+
+
+## II. Exploratory Data Analysis
+
+```{r, message=FALSE, warning=FALSE}
+str(data_TZ)
+```
+
+(a) From the structure output above, we can see that the categorical variable is location, here it is stored as a factor type. The discrete variables are number of parking, the number of bedrooms, the number of bathrooms and IDs. The continuous variables are sale, taxes, list and lotsize.
+
+(b) Below are pairwise correlations and scatterplot matrix for all pairs of quantitative variables (notice that in data analysis we will not consider IDs anymore since it is only served as an identification use).
+
+```{r, message=FALSE, warning=FALSE}
+data_TZ <- data_TZ %>% mutate(location = as.numeric(location) - 1)
+attach(data_TZ)
+numericx <- cbind(sale, list, bedroom, bathroom, taxes, parking, lotsize)
+cor_matrix <- round(cor(numericx), 4)
+cor_matrix
+```
+
+So for sale price rank in terms of the correlation coefficients, the predictors from the highest to lowest are the following: list, taxes, bathroom, bedroom, lotsize, parking.
+
+Now is the scatterplot matrix.
+
+```{r, message=FALSE, warning=FALSE}
+pairs(sale~list+taxes+bathroom+bedroom+lotsize+parking, data = data_TZ, cex.labels = 0.85, main="scatter matrix for TZ 8448")
+```
+
+(c) From the plot above, one can see that only the predictor lotsize has the potential violation of the assumption of constant variance since at the beginning of the value of lotsize, the variance of y is quite big, but it tends to decrease as the value of lotsize increases. Also we confirm this by showing the plot of standardized residuals against lotsize. (Here I changed the location from a factor variable into a numeric catergorical variable with values 0 and 1 when I attach the data variables so that it becomes a dummy variable instead of a factor)
+
+```{r, message=FALSE, warning=FALSE}
+lmod_full_8448 <- lm(sale~list+taxes+bathroom+bedroom+lotsize+parking+location, data = data_TZ)
+stdres_8448 <- rstandard(lmod_full_8448)
+plot(lotsize, stdres_8448, ylab = "Standardized Residuals", main = "Standardized residual plot for TZ 8448")
+```
+
+So as one can see from above, there is a "fanning in" pattern as lotsize increases. Therefore, violation of constant variance with predictor lotsize of sale price exists.
+
+## III. Methods and Model
+
+(i) Now we fit an additive linear regression model with all available predictors, but actually we have done it above with lmod_full_8448. So here will be the list output.
+
+```{r, message=FALSE, warning=FALSE}
+kable(summary(lmod_full_8448)$coefficients,digits = 4, caption = "coefficents result for TZ 8448")
+```
+
+So here I report p-values to 4 decimal places and at significance level of $\alpha = 0.05$ as required, and we see that from above the p-value for list and taxes are strongly significant and location is somewhat significant.
+
+Therefore, the interpretation for list is that holding other predictors unchanged, with one dollar increasing in the last list price of the property, the actual sale price of the property will on average increase 0.835 dollar. For taxes, it means that holding other predictors constant, with one dollar increasing in the previous year’s property tax, the average actual sale price of the property will increase 20.6466 dollar.
+
+Finally, for the variable location, it means that on average speaking, when all other variables are constant, sale price differs at Toronto or Missiagua, at an average level of 93812.1011 dollar, so buying house in Toronto is much more expensive than it is in Missiagua. 
+
+(ii) Now we start with the full model obtained above, and use backward elimination with AIC.
+
+```{r, message=FALSE, warning=FALSE}
+step(lmod_full_8448, direction = "backward")
+```
+
+So the final fitted model is $$\hat{Y}_{i, sale} = \hat{\beta}_0 + \hat{\beta}_{1}X_{i,list} + \hat{\beta_2}X_{i, taxes} + \hat{\beta_3}X_{i, location}$$
+This is consistent with what we concluded in part (i), since in part (i) these three variables are which $\beta$s' are statistically significant.
+
+(iii) Now we use BIC.
+
+```{r, message=FALSE, warning=FALSE}
+n <- length(sale)
+step(lmod_full_8448, direction = "backward", k=log(n))
+```
+
+As we can from above, the final fitted model is still $$\hat{Y}_{i, sale} = \hat{\beta}_0 + \hat{\beta}_{1}X_{i,list} + \hat{\beta_2}X_{i, taxes} + \hat{\beta_3}X_{i, location}$$
+Therefore, the results are consistent with part (ii) and (i), for each step the elimination of variable is same with what has been done in part (ii). 
+
+Explanation is that since in both AIC and BIC, we are using the same elimination method, we will tend to contain the lowest p-value predictors in the full model, which is also the idea in part (i). Also, since here $n = 139 >> 9 = p$, and in R, $BIC = nlog(\frac{RSS}{n}) + plog(n)$ and $AIC = nlog(\frac{RSS}{n}) + 2p$, we notice that $log(139) \approx 5$ and so the difference in AIC and BIC here is quite small even though right now the penalty term in BIC is greater than what in AIC, but it is with only $3 \times 9 = 27$, which is extremely small compared to $nlog(\frac{RSS}{n})$. Therefore, the criterion AIC and BIC are almost same. As a consequence, these two approaches(AIC with backward elimination and BIC with backward elimination) will result in same results in this case.
+
+## IV. Discussions and Limitations
+
+(a) Now we show the 4 diagnostic plots from the final model obtained from partIII (iii).
+
+```{r, message=FALSE, warning=FALSE}
+par(mfrow = c(2,2))
+lmod_final_8448 <- lm(sale~list+taxes+location, data = data_TZ)
+plot(lmod_final_8448)
+```
+
+(b) As we can see from above, the line in Residuals vs. Fitted is almost straight, and no pattern is found here with all points scattered randomly around the horizontal zero line.
+For the plot of the square root of the absolute value of standardized residuals vs. fitted values, we see that all point scattered randomly without any pattern, and also there is no upward or downward curves,i.e, no trend existed.
+For the plot of standardized residuals vs. leverage, we can notice that all points are inside red lines, which means that no outliers or influential points.
+Finally, as for the Normal Q-Q plot, we can see that almost all points lie on the 45 degreee line, with only two points being far away. This shows that, fortunately, normality holds for this model.
+Therefore, our normal error MLR assumptions are all being satisfied well.(linear relationship, independence of error terms, normality and constant variance)
+
+(c) For now we use AIC and BIC with backward elimination to select the variables, we can continue to check whether there are some predictors that are outside our analysis. For instance, the number of markets around the property, the year of use of the property, etc. Besides, we can continue to investigate whether an interaction term of the dummy variable "location" with some other predictor needs adding. Also, we could see if the model would be further reduced using partial F-test.
+```{r}
+set.seed(8448)
+x <- seq(from=0.1, to=20, by=0.1)
+error<-rchisq(200, 100)
+y <- 500 + 0.4*(x-10)^3 + error
+loesfit <- loess(y~x,span=0.8)
+predict(lm(y~x), data.frame(x=15))
+predict(loesfit,data.frame(x=15))
+abs(predict(lm(y~x), data.frame(x=15)) - predict(loesfit,data.frame(x=15)))
+```
+

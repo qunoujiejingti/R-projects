@@ -1,0 +1,144 @@
+---
+title: "SLR in prediciting House Prices in Toronto and Missiauga"
+author: "TONGFEI ZHOU"
+date: "October 22, 2020"
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+---
+
+## I. Exploratory Data Analysis
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+set.seed(8448)
+library(tidyverse)
+data_raw_TZ <- read.csv("real20.csv")
+data_8448 <- sample_n(data_raw_TZ, 200, replace=F)
+attach(data_8448)
+graph_witoutmove_TZ <- ggplot(data_8448, aes(list, sold, color=location)) + geom_point()
+print(graph_witoutmove_TZ + labs(title="8448",x="list_8448",y="sold_8448"))
+```
+
+I will choose the listed price as the predictor in this scatterplot since we often want to know what the actual price would be after we know the listed price (I distinguished the locations as well here). 
+
+From the scatter plot we can see clearly that there is an influential point lied in the right most graph shown above. This graph is quite similar to the quiz4 5th question's graph and so we remove the influential point at the right most of the graph. 
+
+
+One can notice that there is a point with sold value quite small given the second largest list price, this is an outlier on the y-value, but it will not affect the line drastically. In fact, we can show that the linear models with or without this point is quite same. Data is shown as below.
+
+```{r, echo=FALSE}
+sort(list, decreasing=T)[1:2] #take the greatest two x-values
+data_1_TZ <- filter(data_8448, list < 84.990) #remove the data point
+data_2_TZ <- filter(data_8448, list < 6.799)
+lmod1_TZ <- lm(sold~list, data=data_1_TZ)
+lmod2_TZ <- lm(sold~list, data=data_2_TZ)
+summary(lmod1_TZ)
+summary(lmod2_TZ)
+cooks.distance(lmod1_TZ) #calculate the Cook's distance to identify any potential influential, leverage or noteworthy points.
+```
+
+As one can see that, I used sort function first to get the influnetial point's x value and the possible outlier's x value, and then I run the linear model with or without the possible outiler but without the obvious influential point, and one can check that the linear regression line is pretty much the same. 
+
+However, after I calculate the Cook's distance without the obvious influential point ,there is a gap of the Cook's distance at the 6th point, which is this possible outlier, and the value of the Cook's distance has exceeded the threshold $\frac{4}{n-2} = 0.02$(Here n=199 since we have already removed the obvious influential point). Therefore, we should remove this point as well.
+
+Therefore, I will remove the obvious influential point and the outlier point as well. So I will use the subset data named data_2_TZ for the remaining analysis. 
+
+Now we draw the rest two required scatterplots:
+
+```{r, echo=FALSE, warning=FALSE}
+graph_withmove_8448 <- ggplot(data=data_2_TZ, aes(list, sold, color = location)) + geom_point()
+print(graph_withmove_8448 + labs(title="8448",x="list_8448",y="sold_8448"))
+
+graph_withmove_TZ <- ggplot(data=data_2_TZ, aes(taxes, sold, color = location)) + geom_point()
+print(graph_withmove_TZ + labs(title="8448",x="taxes_TZ",y="sold_TZ"))
+```
+
+Interpretation of the three graphs:
+The first one shows that there is a strong linear relationship between the listed price and the acutal sold price in either Toronto or Missisauga area, with some influential and outlier points.
+
+The second one shows that on average, given the same listed price, the actual sold price in Toronto is higher than it is in Missisauga, which reflects that the house price is more expensive in Toronto rather than in Missisauga. Here it shows once again that the linear relationship between the actual sold price and the listed price are quite strong.
+
+The third one, however, shows that with some outliers, the taxes are roughly similar among two different regions. Besides, there is a moderate linear relationship between taxes and the actual sale price here.
+
+## II. Methods and Model
+The following table shows the corresponded values in each linear regression model.
+
+```{r, echo=FALSE}
+lmod_alldata_TZ <- lm(sold~list, data=data_2_TZ)
+lmod_T_TZ <- lm(sold~list, data=data_2_TZ[data_2_TZ$location=="T",])
+lmod_M_TZ <- lm(sold~list, data = data_2_TZ[data_2_TZ$location=="M",])
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+#install.packages(pander) #install it if you do not have it
+library(pander)
+#generate R^2
+R_squared_8448 <- c(summary(lmod_alldata_TZ)$r.squared, summary(lmod_T_TZ)$r.squared, summary(lmod_M_TZ)$r.squared)
+
+#generate estimate of intercept
+Intercept_8448 <- c(summary(lmod_alldata_TZ)$coefficients[1,1], summary(lmod_T_TZ)$coefficients[1,1],summary(lmod_M_TZ)$coefficients[1,1])
+
+#generate estimate of slope
+Slope_8448 <- c(summary(lmod_alldata_TZ)$coefficients[2,1],summary(lmod_T_TZ)$coefficients[2,1],summary(lmod_M_TZ)$coefficients[2,1])
+
+#generate the estimate of the variance of error (MSE)
+MSE_8448 <- c(summary(lmod_alldata_TZ)$s^2,summary(lmod_T_TZ)$s^2,summary(lmod_M_TZ)$s^2)
+
+#generate p-value
+P_value_8448 <- c(summary(lmod_alldata_TZ)$coefficients[2,4], summary(lmod_T_TZ)$coefficients[2,4],summary(lmod_M_TZ)$coefficients[2,4])
+
+#generate the 95% CI
+CI_left_8448 <- c(confint(lmod_alldata_TZ)[2, 1], confint(lmod_T_TZ)[2, 1], confint(lmod_M_TZ)[2, 1])
+
+CI_right_8448 <- c(confint(lmod_alldata_TZ)[2, 2], confint(lmod_T_TZ)[2, 2], confint(lmod_M_TZ)[2, 2])
+
+regression_table_8448 <- data.frame(R_squared_8448, Intercept_8448, Slope_8448, MSE_8448, P_value_8448, CI_left_8448, CI_right_8448)
+
+row.names(regression_table_8448) <- c("lmod_alldata_TZ", "lmod_T_TZ", "lmod_M_TZ")
+pander(regression_table_8448, caption = "Summary Table among three data sets")
+```
+
+
+Now we interpret the $R^2$ in three models:
+Generally, $R^2$ stands for the proportion of the variance of $y_i$ explained by the linear regression model.
+For the first model, the $R^2$ stands for the proportion of the variance of $y_i$ explained by the model based on the whole data.
+For the second model, the $R^2$ stands for the proportion of the variance of $y_i$ explained by the model based on the data where location is at Toronto.
+For the third model, the $R^2$ stands for the proportion of the variance of $y_i$ explained by the model based on the data where location is at Missisauga.
+
+Notice that all three $R^2$ results are quite similar, with highest in Missisauga dataset and lowest in Toronto dataset, and middle one overall. All these three results are quite high since from the scatterplot we plot above with sold~listed, one can see that the linear relationship is very strong, almost perfectly linear on either overall data, only Toronto, or only Missisauga. Therefore, most of the variance of $y$ has been explained by the model successfully, and so leads to quite high $R^2$. This also explains why their results are similar since either datasets show a strongly positive linear relationship and either datasets' lmod has postive slope.
+
+
+To conduct an appropriate pooled two-sample t-test, we need to be sure that the following assumptions are held well:
+1. The two samples are independent
+2. The two populations have the same variance.
+Here we do not have the populations so we check whether the sample variance are same or not and whether they have.
+Further, to conduct the test we need to check whether the two samples are normal or not.
+
+```{r, echo=FALSE}
+c(var(data_2_TZ$sold[data_2_TZ$location=="T"]), var(data_2_TZ$sold[data_2_TZ$location=="M"]))
+qqnorm(data_2_TZ$sold[data_2_TZ$location=="T"])
+qqline(data_2_TZ$sold[data_2_TZ$location=="T"])
+qqnorm(data_2_TZ$sold[data_2_TZ$location=="M"])
+qqline(data_2_TZ$sold[data_2_TZ$location=="M"])
+
+```
+
+As one can check that the Normal Q-Q plot and conclude that the normality assumption is highly violated and the difference of variance is quite large (>0.3). Furthermore, since Toronto and Missisauga are quite near, their sample may not be independent since there should be some potential correlation, for example, as the house price for Toronto goes up, so should be the Missisauga since they stand for GTA. Therefore, the conditions to conduct a pooled two-sample t-test is not appropriate to be used here.
+
+## III. Discussions and Limitations
+To select the best model, one can see above that all three models have quite high $R^2$ values, but one can notice that the sample size is smaller in Toronto and Missisauga datasets and so maybe the two corresponded models are not trained very well, and so with higher variance and wider predicting interval probably, which indicates that the two models may not perform well in predicting. What is more, there might have bias in the subsets as well since they only indicate certain area. Last, the overall dataset after removing the influential points and outliers, it shows very strongly positive linear relationship and so it is a overall great model.
+
+Therefore, I will choose the overall dataset model among the three models.
+
+We analyze the normal error SLR assumptions for the overall dataset model as below:
+
+```{r, echo=FALSE}
+plot(lmod_alldata_TZ$fitted, lmod_alldata_TZ$residuals, ylim = c(-4,4), main="8448")
+abline(h=0, lty="dashed")
+qqnorm(lmod_alldata_TZ$residuals)
+qqline(lmod_alldata_TZ$residuals)
+```
+
+One can see above that the residuals vs. fitted value plot shows no pattern at all, the dots did not fanning out to the right or from the left, and vary randomly above or below 0, which means that the assumptions of linearity, independence and constant variance all hold very well. However, by checking the Normal Q-Q plot we see that the normality assumption does not hold very well since we have tails dragged quite far away from the qqline.
+
+Finally, for more predictors to add to fit a multiple linear regression model, we can choose GDP and income as the predictors.
