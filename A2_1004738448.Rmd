@@ -1,0 +1,154 @@
+---
+title: "A2"
+author: "TONGFEI ZHOU"
+date: "2020/11/25"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+In this assignment, I mainly realize the algorithm of Logistic regression with LASSO penalized term and using coordinate descent method in updating the beta parameters.
+
+First we will source the make_tidy file so that the me-written algorithms fit_logistic_lasso and predict_logistic_lasso will be added to parsnip package.
+```{r}
+store <- rep(NA, 10000)
+
+for (i in 1:10000){
+  store[i] = sum(sample(1:100, replace = TRUE)==1)>0
+}
+
+
+mean(store)
+```
+
+```{r, warning = FALSE, message=FALSE}
+source("make_tidy.R")
+```
+
+The model information is printed above, however it is the intermediate results and so the rest finalized part is cotinued to be done in the make_tidy.R file.
+
+Now we get our model, and I simulate the data as in tutorial 9 solution as follows:
+
+```{r}
+set.seed(8448)
+n = 1000
+dat <- tibble(x = seq(-3,3, length.out = n),
+              w = 3*cos(3*seq(-pi,pi, length.out = n)),
+              y = rbinom(n,size = 1, prob = 1/(1 + exp(-w+2*x)) )%>% as.numeric %>% factor,
+              cat = sample(c("a","b","c"), n, replace = TRUE)
+              )
+
+split <- initial_split(dat, strata = c("cat"))
+
+train <- training(split)
+test <- testing(split)
+
+rec <- recipe(y ~ . , data = train) %>%
+  step_dummy(all_nominal(), -y) %>% step_zv(all_outcomes()) %>%
+  step_normalize(all_numeric(), -y) # Since we do not have intercept in our x in fit_logistic_lasso, we don't step_intercept() here
+
+head(dat)
+```
+
+As we can see from the piece of dat, it is a model with response Y as categorical variable with only possible values of 0 and 1, and three predictors, x, w as numeric predictors and cat as a categorical variable with values 'a', 'b', 'c'.
+
+Then I randomly choose $\lambda$ to be 0.01 and check the quality of the prediction result.
+
+```{r}
+lambda = 0.01
+spec <- logistic_lasso(penalty=lambda) %>% set_engine("fit_logistic_lasso")
+
+logistic_lasso_result <- workflow() %>% add_recipe(rec) %>% add_model(spec) %>% fit(train)
+
+
+predict(logistic_lasso_result, new_data = test) %>% bind_cols(test %>% select(y)) %>%
+  conf_mat(truth = y, estimate = .pred_class)
+```
+
+As we can see above, the prediction results is not bad at all since with both cases there are only 13 and 11 errors.
+
+Now we check that we got the answers correct by comapring with glm like we did in tut9 sol. Also this is the unit test we will run.
+
+```{r, warning=FALSE, message=FALSE}
+# Make the data
+ddat<- rec %>% prep(train) %>% juice
+
+ff = logistic_reg(penalty = lambda, mixture = 1) %>%
+  set_mode("classification") %>% 
+  set_engine("glm") %>% 
+  fit(y ~ ., family = "binomial", data = ddat)
+
+
+# We also print the the compare error table so that we can make conclusion in the bottom easier
+compare = ff %>% tidy %>% select(term, estimate) %>%
+  mutate(logistic_lasso_estimate = c(logistic_lasso_result$fit$fit$fit$intercept,logistic_lasso_result$fit$fit$fit$beta), err = estimate - logistic_lasso_estimate)
+compare
+
+int_true <- compare$estimate[1] # The intercept value computed by functions in R
+beta_true <- compare$estimate[-1] # The beta value computed by functions in R
+
+ret_intercept <- compare$logistic_lasso_estimate[1]
+ret_beta <- compare$logistic_lasso_estimate[-1]
+
+if (abs(int_true - ret_intercept) > 0.01) {
+  print(glue::glue("Test failed. Expected intercept {int_true} but got 
+                   {compare$logistic_lasso_estimate[1]}\n"))
+}
+
+if (mean(abs(beta_true - ret_beta)) > 0.01) {
+  print(glue::glue("Test failed. Expected computed beta had an error of 
+                   {mean(abs(beta_true - ret_beta))}.\n"))
+}
+```
+
+As we can see the error is quite small, so Nice~. (And we past the unit test with $\lambda = 0.01$ in this case.)
+
+Also we need to make sure that our predict works too!
+
+```{r, warning=FALSE}
+test_dat <- rec %>% prep(train) %>% bake(test)
+glm_pred <- (predict(ff, test_dat) == 1) %>% as.numeric
+preds <- predict(logistic_lasso_result, new_data=test) %>% bind_cols(glm_pred = glm_pred)
+if(any(preds$.pred_class != preds$glm_pred)){
+  warning("There are some predictions that are not the same with glmnet.")
+}else{
+  print("All the predictions are the same with glmnet.")
+}
+```
+
+Since all the predictions are the same with glmnet, our prediction works too and so the algorithm written by me is correct in this unit test!
+
+Now we show how to tune the model: First I choose 10 lambda randomly and then I call my function fit_logistic_lasso to run the 10-folds Cross Validation based on the training data. Notice that since this is a prediction problem, I use the metrics "accuracy" instead of "rmse".
+
+```{r, warning=FALSE, message=FALSE}
+grid <- grid_regular(penalty(), levels = 10)
+spec_tune <- logistic_lasso(penalty = tune()) %>% set_engine("fit_logistic_lasso")
+wf <- workflow() %>% add_recipe(rec) %>% add_model(spec_tune)
+folds <- vfold_cv(train)
+fit_tune <- wf %>%
+tune_grid(resamples = folds, grid = grid, metrics = metric_set(accuracy))
+fit_tune %>% collect_metrics() %>% ggplot(aes(penalty, mean)) + geom_line() +
+facet_wrap(~.metric)
+
+```
+
+So now we can our final model.
+
+```{r}
+penalty_final <- fit_tune %>% select_best(metric = "accuracy")
+
+wf_final <- wf %>% finalize_workflow(penalty_final)
+wf_final
+```
+
+So as one can see it is quite great. Finally we can take a peak to our training error.
+
+```{r}
+final_fit <- wf_final %>% fit(train)
+predict(final_fit, new_data = test) %>% bind_cols(test %>% select(y)) %>%
+  ggplot(aes(.pred_class, y)) + geom_point() + geom_abline()
+```
+
+Not surprisingly, it is pretty good as what we see from the above.

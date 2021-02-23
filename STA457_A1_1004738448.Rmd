@@ -1,0 +1,150 @@
+---
+title: "STA457_A1_1004738448"
+author: "TONGFEI ZHOU"
+date: "1/25/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Q1.
+The two required simulated model and their plots are at below. I set the seed as
+my student number.
+a)
+
+```{r, message = FALSE}
+library(astsa)
+set.seed(1004738448) # set the seed to generate same results every time
+wt <- rnorm(200) # get 200 random N(0,1) - Gaussian white noise 
+t <- 101:200 # generate t from 101 to 200 inclusive
+st <- c(rep(0,100),10*exp(-(t-100)/20)*cos(2*pi*t/4)) # first 100 is 0, the rest
+# apply the function
+xta <- st + wt # get the model for a
+plot.ts(xta, main="signal-plus-noise model for a", col="blue") # plot the graph
+```
+
+b)
+
+```{r}
+st <- c(rep(0,100),10*exp(-(t-100)/200)*cos(2*pi*t/4)) # change denomiator to 200
+xtb <- st + wt # get the model for b
+plot.ts(xtb, main="signal-plus-noise model for b", col="blue") # plot the graph
+```
+
+c)
+
+Notice that compared with the Earthquake and Explosion plots in textbooks Figure 1.7, the plot a) here is similar to the second phase of the plot of the Explosion, with mean around 0 and variance decreasing as t increasing.
+
+However, the plot b) here is similar to the entire plot of the Earthquake, with
+mean around 0 but the variance decrease is almost negligible and the decreasing 
+speed is much slower than what in plot a).
+
+Now we plot the two required signal modulators:
+
+```{r}
+t <- 1:100 # generate t from 1 to 100 inclusive
+mod1 <- exp(-t/20) # signal modulators a
+mod2 <- exp(-t/200) # signal modulators a
+plot.ts(mod1, main="signal modulators for a", col="blue") # plot the required graph
+plot.ts(mod2, main="signal modulators for b", col="blue")
+```
+
+As we can clearly see from above, the plot for model b, i.e., mod2, is more straight than what for model a. Therefore, the curve in model a, i.e., mod1, is
+smoother than what in model b, i.e., mod2.
+
+d)
+
+Since $x_t = s_t + w_t$, we have $\mu_{x}(t) = E(x_t) = E(s_t) + E(w_t) = E(s_t)$ since $w_t \in i.i.d.N(0,1)$, and so $\mu_x(t) = 10exp(-\frac{(t-100)}{20})cos(2\pi t/4)$ for model a and 
+$\mu_x(t) = 10exp(-\frac{(t-100)}{200})cos(2\pi t/4)$ for model b for $t \in [101, 200]$ and
+$\mu_x(t) = 0$ for $t \in [1, 100]$
+
+
+```{r}
+t <- 101:200
+mean_a <- c(rep(0,100), 10*exp(-(t-100)/20)*cos(2*pi*t/4)) # get the mean function of model a
+mean_b <- c(rep(0, 100), 10*exp(-(t-100)/200)*cos(2*pi*t/4)) # get the mean function of model b
+plot.ts(mean_a, main="mean for model a", col="blue") # plot the graph
+plot.ts(mean_b, main="mean for model b", col="blue")
+```
+
+Q2.
+
+```{r}
+trend <- time(jj) # get the trend
+seasonal <- factor(cycle(jj)) # get the quarter and factorize it to run lm()
+lmod <- lm(log(jj) ~ 0 + trend + seasonal, data = jj, na.action = NULL) # run the lm() function to get the model
+# we can run the model like above since wt are i.i.d N(0,1) right now
+summary(lmod) # get the model information
+```
+
+As we can see from above, the model is approximately $$log(y_t) = x_t = 0.1672t - 328.3Q_1(t) -328.2Q_2(t) - 328.2Q_3(t) - 328.4Q_4(t)$$ and we see that all the predictors in the model are strongly statistically significant at the $\alpha = 0.05$ significance level either by individual t-test or Global F-test, meaning that all or some predictors are very useful.
+
+b)
+If the model is correct, then the average annual increase in the logged earnings per share 
+will be $$E(x_{t+1} - x_t) = E(\beta(t+1) + w_{t+1} - \beta t - w_t)$$ Notice that all the 
+quarter terms are 0 since we jump from one year to the next year and so the quarter terms are
+all 0 by the definition of the indicator variable.
+
+Now we get $$E(\beta(t+1) + w_{t+1} - \beta t - w_t) = \beta(t+1) - \beta t = \beta$$, and the estimated $\hat{\beta} = 0.1672$ as our model produced. Therefore, there is an avarege annual increase of 0.1672 in logged earnings per share.
+
+c)
+In the third quarter, $Q_3(t) = 1$ and the rest quarter terms are 0, and in the fourth quarter,
+$Q_4(t) = 1$ and the rest quarter terms are 0. Therefore, we have $$E(x_{t, Q3}) = E(\beta t + \alpha_3 + w_t) = \beta t + \alpha_3$$ and $$E(x_{t, Q4}) = E(\beta t + \alpha_4 + w_t) = \beta t + \alpha_4$$ and so the average logged earnings per share difference will be $\alpha_4 - \alpha_3 = -328.4 - (-328.2) = -0.2$, and so it has decreased by $\frac{0.2}{328.2} \approx 0.061\%$.
+
+d)
+Now we see what happens if we include an inercept term in a)
+
+```{r}
+lmod_intercept <- lm(log(jj) ~ trend + seasonal, na.action = NULL) # remove the 0 + ...
+summary(lmod_intercept)
+```
+
+We see that the seasonal1 term is missing since by the default setting of linear regression, if the intercept is included, then we can use the intercept term to represent one category of our 4 categories, but this will lead to diffculty in interpretation a little bit. Also, we see that the predictors seasonal2 is not significant at all and seasonal3 is less significant as it was in a).
+
+e)
+
+```{r}
+plot(log(jj), main="Actual vs. Fitted values")
+lines(fitted.values(lmod), col="blue")
+plot(time(jj), lmod$residuals, xlab = "Time", ylab = "Residuals")
+```
+
+We see from above that the residuals show patterns as time increases and so it againsts the assumption of uncorrelated in the white noise, and so the residuals are not white noise. Therefore, the model does not fit the data very well since it has violated the white noise assumption.
+
+Q3.
+
+First we determine the autocovariance functions:
+When $h = 0$, then $s = t$, and so $$\gamma_{x}(s,t) = \gamma_{x}(t,t) = Var(w_{t-1} + 1.2w_t + w_{t+1}) = Var(w_{t-1}) + 1.44Var(w_t) + Var(w_{t+1})$$ since $w_t$ are uncorrelated. Now substitute $\sigma_w^2$ into the above formula we get: $$\gamma_{x}(t,t) = \gamma(0) = 3.44\sigma_w^2$$
+
+When $h = 1$, then we have $|s-t| = 1$, and so $$\gamma(1) =Cov(x_{t+1}, x_t) = Cov(w_t + 1.2w_{t+1} + w_{t+2}, w_{t-1} + 1.2w_t + w_{t+1}) = 1.2Var(w_t) + 1.2Var(w_{t+1}) = 2.4\sigma_w^2$$ since $w_t$ are uncorrelated to one another.
+
+When $h = 2$, then we have $|s-t| = 2$, and so $$\gamma(2) = Cov(x_{t+2}, x_t) = Cov(w_{t+1} + 1.2w_{t+2} + w_{t+3}, w_{t-1} + 1.2w_t + w_{t+1}) = Var(w_{t+1}) = \sigma_w^2$$ since $w_t$ are uncorrelated to one another.
+
+When $h = 3$, then we have $|s-t| = 3$, and so $$\gamma(3) = Cov(x_{t+3}, x_t) = Cov(w_{t+2} + 1.2w_{t+3} + w_{t+4}, w_{t-1} + 1.2w_t + w_{t+1}) = 0 $$ since $w_t$ are uncorrelated to one another. Therefore we can say that if $h \geq 3$ then $\gamma(h) = 0$.
+
+Therefore, we have: $$ \gamma(h)=\left\{
+\begin{array}{rcl}
+3.44\sigma_w^2       &      & {h = 0}\\
+2.4\sigma_w^2     &      & {|h| = 1}\\
+\sigma_w^2     &      & {|h| = 2}\\
+0       &      & {|h| \geq 3}
+\end{array} \right. $$
+
+Notice here we add absolute value to the h since the symmetry of covariance. Also, since $$\rho(h) = \frac{\gamma(h)}{\gamma(0)}$$ we have our autocorrelation functions as follow:
+$$ \rho(h)=\left\{
+\begin{array}{rcl}
+1       &      & {h = 0}\\
+\frac{30}{43}     &      & {|h| = 1}\\
+\frac{25}{86}     &      & {|h| = 2}\\
+0       &      & {|h| \geq 3}
+\end{array} \right. $$
+The plot is below:
+
+```{r}
+h_range <- c(-6:6)
+acf_value <- c(0, 0, 0, 0, 25/86, 30/43, 1, 30/43, 25/86, 0, 0, 0, 0)
+plot(h_range, acf_value, type="h", xlab = "lag", ylab = "ACF value", main="ACF as a function of lag h")
+```
+
